@@ -82,6 +82,14 @@ st.markdown("""
     [data-testid="stMetricValue"] {
         color: #4f46e5 !important;
     }
+
+    /* Hide Streamlit branding & GitHub links */
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stAppDeployButton {display: none;}
+    [data-testid="stHeader"] {display: none;}
+    [data-testid="stToolbar"] {display: none;}
 </style>
 """, unsafe_allow_html=True)
 
