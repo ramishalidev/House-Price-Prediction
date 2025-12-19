@@ -1,7 +1,7 @@
 """
 FastAPI Backend for House Price Prediction
 ==========================================
-A RESTful API server for serving house price predictions using trained ML models.
+Uses the trained Linear Regression model from the notebook.
 """
 
 from fastapi import FastAPI, HTTPException
@@ -12,12 +12,11 @@ import numpy as np
 import pandas as pd
 import pickle
 import os
-from enum import Enum
 
 # Initialize FastAPI app
 app = FastAPI(
     title="🏠 House Price Prediction API",
-    description="Predict house prices using advanced machine learning models",
+    description="Predict house prices using trained Linear Regression model",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -32,107 +31,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Enums for categorical features
-class MSZoning(str, Enum):
-    RL = "RL"  # Residential Low Density
-    RM = "RM"  # Residential Medium Density
-    FV = "FV"  # Floating Village
-    RH = "RH"  # Residential High Density
-    C = "C (all)"  # Commercial
-
-class Neighborhood(str, Enum):
-    NAmes = "NAmes"
-    CollgCr = "CollgCr"
-    OldTown = "OldTown"
-    Edwards = "Edwards"
-    Somerst = "Somerst"
-    NridgHt = "NridgHt"
-    Gilbert = "Gilbert"
-    Sawyer = "Sawyer"
-    NWAmes = "NWAmes"
-    SawyerW = "SawyerW"
-    Mitchel = "Mitchel"
-    BrkSide = "BrkSide"
-    Crawfor = "Crawfor"
-    IDOTRR = "IDOTRR"
-    Timber = "Timber"
-    NoRidge = "NoRidge"
-    StoneBr = "StoneBr"
-    SWISU = "SWISU"
-    ClearCr = "ClearCr"
-    MeadowV = "MeadowV"
-    Blmngtn = "Blmngtn"
-    BrDale = "BrDale"
-    Veenker = "Veenker"
-    NPkVill = "NPkVill"
-    Blueste = "Blueste"
-
-class BldgType(str, Enum):
-    Family1 = "1Fam"
-    TwnhsE = "TwnhsE"
-    Duplex = "Duplex"
-    Twnhs = "Twnhs"
-    TwoFmCon = "2fmCon"
-
-class HouseStyle(str, Enum):
-    Story1 = "1Story"
-    Story2 = "2Story"
-    Story1_5Fin = "1.5Fin"
-    SLvl = "SLvl"
-    SFoyer = "SFoyer"
-    Story1_5Unf = "1.5Unf"
-    Story2_5Unf = "2.5Unf"
-    Story2_5Fin = "2.5Fin"
-
-class Quality(str, Enum):
-    Excellent = "Ex"
-    Good = "Gd"
-    Average = "TA"
-    Fair = "Fa"
-    Poor = "Po"
-
-class GarageType(str, Enum):
-    Attchd = "Attchd"
-    Detchd = "Detchd"
-    BuiltIn = "BuiltIn"
-    CarPort = "CarPort"
-    Basment = "Basment"
-    NoGarage = "None"
-
-# Request model for house features
+# Request model for house features (simplified for UI)
 class HouseFeatures(BaseModel):
-    # Basic Info
     overall_quality: int = Field(..., ge=1, le=10, description="Overall Quality (1-10)")
     overall_condition: int = Field(..., ge=1, le=10, description="Overall Condition (1-10)")
     year_built: int = Field(..., ge=1800, le=2025, description="Year Built")
     year_remod: int = Field(..., ge=1800, le=2025, description="Year Remodeled")
-    
-    # Size Features
     lot_area: int = Field(..., ge=0, description="Lot Area (sq ft)")
     gr_liv_area: int = Field(..., ge=0, description="Above Ground Living Area (sq ft)")
     total_bsmt_sf: int = Field(default=0, ge=0, description="Total Basement Area (sq ft)")
     first_flr_sf: int = Field(..., ge=0, description="First Floor (sq ft)")
     second_flr_sf: int = Field(default=0, ge=0, description="Second Floor (sq ft)")
-    
-    # Rooms
     bedrooms: int = Field(..., ge=0, le=10, description="Bedrooms Above Ground")
     full_bath: int = Field(..., ge=0, le=5, description="Full Bathrooms")
     half_bath: int = Field(default=0, ge=0, le=3, description="Half Bathrooms")
-    kitchen_qual: Quality = Field(default=Quality.Average, description="Kitchen Quality")
-    
-    # Garage
+    kitchen_qual: str = Field(default="TA", description="Kitchen Quality")
     garage_cars: int = Field(default=0, ge=0, le=5, description="Garage Car Capacity")
     garage_area: int = Field(default=0, ge=0, description="Garage Area (sq ft)")
-    garage_type: GarageType = Field(default=GarageType.Attchd, description="Garage Type")
-    
-    # Additional Features
     fireplaces: int = Field(default=0, ge=0, le=4, description="Number of Fireplaces")
-    pool_area: int = Field(default=0, ge=0, description="Pool Area (sq ft)")
-    
-    # Location & Type
-    neighborhood: Neighborhood = Field(default=Neighborhood.NAmes, description="Neighborhood")
-    bldg_type: BldgType = Field(default=BldgType.Family1, description="Building Type")
-    house_style: HouseStyle = Field(default=HouseStyle.Story1, description="House Style")
+    neighborhood: str = Field(default="NAmes", description="Neighborhood")
 
     class Config:
         json_schema_extra = {
@@ -152,12 +69,8 @@ class HouseFeatures(BaseModel):
                 "kitchen_qual": "Gd",
                 "garage_cars": 2,
                 "garage_area": 500,
-                "garage_type": "Attchd",
                 "fireplaces": 1,
-                "pool_area": 0,
-                "neighborhood": "CollgCr",
-                "bldg_type": "1Fam",
-                "house_style": "2Story"
+                "neighborhood": "CollgCr"
             }
         }
 
@@ -167,17 +80,12 @@ class PredictionResponse(BaseModel):
     price_range_low: float
     price_range_high: float
     confidence: str
-    features_summary: dict
+    model_used: str
 
-# Simple prediction model using coefficients learned from data analysis
-# This is a simplified model - in production, you'd load the trained pickle file
+# Simplified prediction using coefficients (fallback when model not available)
 class SimplePricePredictor:
-    """
-    A simplified price prediction model based on key features.
-    Uses coefficients derived from the data analysis.
-    """
+    """Fallback predictor when trained model is not available."""
     
-    # Base price and feature weights (derived from correlation analysis)
     BASE_PRICE = 80000
     
     QUALITY_WEIGHTS = {
@@ -197,80 +105,64 @@ class SimplePricePredictor:
         "Blmngtn": 1.05
     }
     
-    KITCHEN_QUAL_WEIGHTS = {
-        "Ex": 1.15, "Gd": 1.05, "TA": 1.0, "Fa": 0.9, "Po": 0.8
-    }
+    KITCHEN_QUAL_WEIGHTS = {"Ex": 1.15, "Gd": 1.05, "TA": 1.0, "Fa": 0.9, "Po": 0.8}
     
     def predict(self, features: HouseFeatures) -> tuple:
-        # Start with base price
         price = self.BASE_PRICE
-        
-        # Quality factor (strongest predictor)
-        quality_mult = self.QUALITY_WEIGHTS.get(features.overall_quality, 1.0)
-        price *= quality_mult
-        
-        # Living area contribution (~$50 per sq ft)
+        price *= self.QUALITY_WEIGHTS.get(features.overall_quality, 1.0)
         price += features.gr_liv_area * 50
-        
-        # Basement contribution (~$30 per sq ft)
         price += features.total_bsmt_sf * 30
-        
-        # Garage contribution
         price += features.garage_area * 25
         price += features.garage_cars * 5000
-        
-        # Bathroom contribution
         price += features.full_bath * 8000
         price += features.half_bath * 4000
         
-        # Bedroom adjustment
-        if features.bedrooms >= 3:
-            price += (features.bedrooms - 2) * 3000
+        age = 2024 - features.year_built
+        if age < 5: price *= 1.1
+        elif age < 15: price *= 1.05
+        elif age > 50: price *= 0.85
+        elif age > 30: price *= 0.92
         
-        # Age factor (newer = higher price)
-        current_year = 2024
-        age = current_year - features.year_built
-        if age < 5:
-            price *= 1.1
-        elif age < 15:
-            price *= 1.05
-        elif age > 50:
-            price *= 0.85
-        elif age > 30:
-            price *= 0.92
-        
-        # Remodel bonus
-        remod_years = current_year - features.year_remod
-        if remod_years < 5:
-            price *= 1.05
-        
-        # Neighborhood multiplier
-        neighborhood_mult = self.NEIGHBORHOOD_MULTIPLIERS.get(features.neighborhood.value, 1.0)
-        price *= neighborhood_mult
-        
-        # Kitchen quality
-        kitchen_mult = self.KITCHEN_QUAL_WEIGHTS.get(features.kitchen_qual.value, 1.0)
-        price *= kitchen_mult
-        
-        # Fireplaces
+        price *= self.NEIGHBORHOOD_MULTIPLIERS.get(features.neighborhood, 1.0)
+        price *= self.KITCHEN_QUAL_WEIGHTS.get(features.kitchen_qual, 1.0)
         price += features.fireplaces * 5000
-        
-        # Pool (if present)
-        if features.pool_area > 0:
-            price += 15000 + features.pool_area * 20
-        
-        # Lot area contribution (small effect)
         price += features.lot_area * 2
         
-        # Calculate confidence range (+/- 10-15%)
-        confidence_pct = 0.12
-        low = price * (1 - confidence_pct)
-        high = price * (1 + confidence_pct)
-        
-        return price, low, high
+        return price, price * 0.88, price * 1.12
 
-# Initialize predictor
-predictor = SimplePricePredictor()
+# Global variables for model
+model = None
+scaler = None
+feature_names = None
+fallback_predictor = SimplePricePredictor()
+
+def load_model():
+    """Load the trained model, scaler, and feature names."""
+    global model, scaler, feature_names
+    
+    model_path = 'models/linear_regression_model.pkl'
+    scaler_path = 'models/scaler.pkl'
+    features_path = 'models/feature_names.pkl'
+    
+    if os.path.exists(model_path) and os.path.exists(scaler_path) and os.path.exists(features_path):
+        try:
+            with open(model_path, 'rb') as f:
+                model = pickle.load(f)
+            with open(scaler_path, 'rb') as f:
+                scaler = pickle.load(f)
+            with open(features_path, 'rb') as f:
+                feature_names = pickle.load(f)
+            print("✅ Model loaded successfully!")
+            return True
+        except Exception as e:
+            print(f"❌ Error loading model: {e}")
+            return False
+    else:
+        print("⚠️ Model files not found. Run the notebook first to train the model.")
+        return False
+
+# Load model on startup
+model_loaded = load_model()
 
 @app.get("/")
 async def root():
@@ -278,77 +170,127 @@ async def root():
     return {
         "status": "online",
         "message": "House Price Prediction API is running!",
-        "docs": "/docs",
-        "version": "1.0.0"
+        "model_loaded": model_loaded,
+        "docs": "/docs"
     }
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy"}
+    return {"status": "healthy", "model_loaded": model_loaded}
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict_price(features: HouseFeatures):
-    """
-    Predict house price based on input features.
+    """Predict house price based on input features."""
     
-    Returns predicted price with confidence range.
-    """
-    try:
-        # Get prediction
-        price, low, high = predictor.predict(features)
-        
-        # Determine confidence level
-        if features.overall_quality >= 7:
-            confidence = "High"
-        elif features.overall_quality >= 4:
-            confidence = "Medium"
-        else:
-            confidence = "Low"
-        
-        # Summary of key features
-        features_summary = {
-            "quality_rating": f"{features.overall_quality}/10",
-            "living_area": f"{features.gr_liv_area:,} sq ft",
-            "total_area": f"{features.gr_liv_area + features.total_bsmt_sf:,} sq ft",
-            "bedrooms": features.bedrooms,
-            "bathrooms": f"{features.full_bath}.{features.half_bath}",
-            "garage": f"{features.garage_cars} cars",
-            "age": f"{2024 - features.year_built} years",
-            "neighborhood": features.neighborhood.value
-        }
+    if model is not None and scaler is not None and feature_names is not None:
+        # Use trained model
+        try:
+            # Create a DataFrame with all features initialized to 0
+            input_df = pd.DataFrame(0, index=[0], columns=feature_names)
+            
+            # Fill in the basic features
+            input_df['OverallQual'] = features.overall_quality
+            input_df['OverallCond'] = features.overall_condition
+            input_df['YearBuilt'] = features.year_built
+            input_df['YearRemodAdd'] = features.year_remod
+            input_df['LotArea'] = np.log1p(features.lot_area)  # Log transform
+            input_df['GrLivArea'] = np.log1p(features.gr_liv_area)
+            input_df['TotalBsmtSF'] = np.log1p(features.total_bsmt_sf)
+            input_df['1stFlrSF'] = np.log1p(features.first_flr_sf)
+            input_df['2ndFlrSF'] = np.log1p(features.second_flr_sf)
+            input_df['BedroomAbvGr'] = features.bedrooms
+            input_df['FullBath'] = features.full_bath
+            input_df['HalfBath'] = features.half_bath
+            input_df['GarageCars'] = features.garage_cars
+            input_df['GarageArea'] = np.log1p(features.garage_area)
+            input_df['Fireplaces'] = features.fireplaces
+            
+            # Engineered features
+            total_sf = features.total_bsmt_sf + features.first_flr_sf + features.second_flr_sf
+            input_df['TotalSF'] = np.log1p(total_sf)
+            input_df['HouseAge'] = 2010 - features.year_built  # Using 2010 as reference
+            input_df['RemodelAge'] = 2010 - features.year_remod
+            input_df['TotalBath'] = features.full_bath + 0.5 * features.half_bath
+            input_df['HasGarage'] = 1 if features.garage_area > 0 else 0
+            input_df['HasBsmt'] = 1 if features.total_bsmt_sf > 0 else 0
+            input_df['HasFireplace'] = 1 if features.fireplaces > 0 else 0
+            
+            # Kitchen quality encoding
+            kitchen_map = {'Ex': 4, 'Gd': 3, 'TA': 2, 'Fa': 1, 'Po': 0}
+            input_df['KitchenQual'] = kitchen_map.get(features.kitchen_qual, 2)
+            
+            # Neighborhood one-hot encoding
+            neighborhood_col = f'Neighborhood_{features.neighborhood}'
+            if neighborhood_col in feature_names:
+                input_df[neighborhood_col] = 1
+            
+            # Scale and predict
+            input_scaled = scaler.transform(input_df)
+            prediction_log = model.predict(input_scaled)[0]
+            predicted_price = np.expm1(prediction_log)  # Convert from log scale
+            
+            # Confidence based on quality
+            if features.overall_quality >= 7:
+                confidence = "High"
+                range_pct = 0.10
+            elif features.overall_quality >= 4:
+                confidence = "Medium"
+                range_pct = 0.12
+            else:
+                confidence = "Low"
+                range_pct = 0.15
+            
+            return PredictionResponse(
+                predicted_price=round(predicted_price, 2),
+                price_range_low=round(predicted_price * (1 - range_pct), 2),
+                price_range_high=round(predicted_price * (1 + range_pct), 2),
+                confidence=confidence,
+                model_used="Trained Linear Regression"
+            )
+            
+        except Exception as e:
+            # Fallback to simple predictor on error
+            print(f"Model prediction error: {e}")
+            price, low, high = fallback_predictor.predict(features)
+            return PredictionResponse(
+                predicted_price=round(price, 2),
+                price_range_low=round(low, 2),
+                price_range_high=round(high, 2),
+                confidence="Medium",
+                model_used="Fallback (Simple)"
+            )
+    else:
+        # Use fallback predictor
+        price, low, high = fallback_predictor.predict(features)
+        confidence = "High" if features.overall_quality >= 7 else ("Medium" if features.overall_quality >= 4 else "Low")
         
         return PredictionResponse(
             predicted_price=round(price, 2),
             price_range_low=round(low, 2),
             price_range_high=round(high, 2),
             confidence=confidence,
-            features_summary=features_summary
+            model_used="Fallback (Run notebook to train model)"
         )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/model-status")
+async def model_status():
+    """Check if trained model is available."""
+    return {
+        "model_loaded": model_loaded,
+        "model_type": "Linear Regression" if model_loaded else "Fallback",
+        "message": "Trained model is ready!" if model_loaded else "Run the notebook to train the model."
+    }
 
 @app.get("/neighborhoods")
 async def get_neighborhoods():
-    """Get list of available neighborhoods with price tiers"""
+    """Get list of available neighborhoods."""
     return {
         "premium": ["StoneBr", "NridgHt", "NoRidge"],
-        "above_average": ["Somerst", "Timber", "Veenker", "CollgCr", "Crawfor", "ClearCr"],
-        "average": ["Gilbert", "NWAmes", "SawyerW", "Mitchel", "Blmngtn"],
+        "above_average": ["Somerst", "Timber", "Veenker", "CollgCr", "Crawfor", "ClearCr", "Blmngtn"],
+        "average": ["Gilbert", "NWAmes", "SawyerW", "Mitchel"],
         "below_average": ["NAmes", "NPkVill", "SWISU", "Blueste", "Sawyer", "OldTown", "Edwards"],
         "budget": ["BrkSide", "BrDale", "IDOTRR", "MeadowV"]
-    }
-
-@app.get("/feature-options")
-async def get_feature_options():
-    """Get available options for all categorical features"""
-    return {
-        "neighborhoods": [n.value for n in Neighborhood],
-        "building_types": [b.value for b in BldgType],
-        "house_styles": [h.value for h in HouseStyle],
-        "garage_types": [g.value for g in GarageType],
-        "quality_levels": [q.value for q in Quality]
     }
 
 if __name__ == "__main__":
